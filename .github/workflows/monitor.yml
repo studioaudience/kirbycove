@@ -1,0 +1,57 @@
+name: Monitor Kirby Cove
+
+on:
+  schedule:
+    - cron: "2/5 * * * *"
+  workflow_dispatch:
+    inputs:
+      test_notifications:
+        description: Send a test email instead of checking availability
+        required: false
+        type: boolean
+        default: false
+
+permissions:
+  contents: write
+
+concurrency:
+  group: kirby-cove-monitor
+  cancel-in-progress: false
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Check availability and notify
+        env:
+          TIMEZONE: America/Los_Angeles
+          GMAIL_USERNAME: ${{ secrets.GMAIL_USERNAME }}
+          GMAIL_APP_PASSWORD: ${{ secrets.GMAIL_APP_PASSWORD }}
+          ALERT_EMAIL_TO: ${{ secrets.ALERT_EMAIL_TO }}
+        run: |
+          if [[ "${{ inputs.test_notifications }}" == "true" ]]; then
+            python monitor.py --test-notifications
+          else
+            python monitor.py
+          fi
+
+      - name: Save availability state
+        if: ${{ inputs.test_notifications != true }}
+        run: |
+          if git diff --quiet -- state.json; then
+            echo "Availability state unchanged."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add state.json
+          git commit -m "Update Kirby Cove availability state"
+          git push
