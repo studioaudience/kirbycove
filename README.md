@@ -2,10 +2,8 @@
 
 This small Python monitor checks Recreation.gov for newly available **overnight**
 campsites at Kirby Cove (sites 001–005). It deliberately ignores the Day Use
-picnic site. GitHub Actions runs it every 5 minutes and sends both:
-
-- email through a Gmail account and app password;
-- SMS through Twilio.
+picnic site. GitHub Actions runs it every 5 minutes and sends an email through
+a Gmail account and app password.
 
 The monitor checks from today through Kirby Cove's six-month reservation window.
 It alerts only for site/date combinations that were not available on the prior
@@ -19,25 +17,13 @@ Use a Gmail account with two-step verification enabled, then create a Google app
 password. The app password—not your normal Gmail password—will be stored in
 GitHub. The sending Gmail address and receiving address can be the same.
 
-### Text messages: Twilio
-
-Create a Twilio account and obtain:
-
-- Account SID
-- Auth Token
-- a Twilio SMS-capable phone number
-
-A trial account can text only verified destination numbers. Twilio may charge a
-small amount per message or require an upgraded account depending on its current
-trial terms and your destination.
-
 ## 2. Put this project in GitHub
 
 1. Create a new **public** GitHub repository. Public repositories receive free
    standard GitHub-hosted Actions usage, and this project contains no credentials.
    The credentials added later remain encrypted GitHub Actions secrets.
 2. Upload all files and folders from this project, including `.github/workflows`.
-3. Do **not** put credentials or phone numbers directly in any file.
+3. Do **not** put credentials directly in any file.
 
 From a terminal, the equivalent commands are:
 
@@ -60,18 +46,14 @@ repository secret**. Add these exact names:
 | `GMAIL_USERNAME` | Gmail address used to send alerts |
 | `GMAIL_APP_PASSWORD` | 16-character Google app password |
 | `ALERT_EMAIL_TO` | destination email address |
-| `TWILIO_ACCOUNT_SID` | Twilio Account SID |
-| `TWILIO_AUTH_TOKEN` | Twilio Auth Token |
-| `TWILIO_FROM_NUMBER` | Twilio number in E.164 format, such as `+14155550100` |
-| `ALERT_PHONE_TO` | your number in E.164 format, such as `+14155550123` |
 
 ## 4. Send a test
 
 1. Open the repository's **Actions** tab.
 2. Select **Monitor Kirby Cove**.
 3. Choose **Run workflow**.
-4. Check **Send a test email and SMS instead of checking availability**.
-5. Run it and confirm both alerts arrive.
+4. Check **Send a test email instead of checking availability**.
+5. Run it and confirm the email arrives.
 
 Then run it once more with the box unchecked. The workflow will check live
 availability and update `state.json`. Scheduled runs continue automatically.
@@ -89,8 +71,6 @@ repository's included Actions minutes will generally not cover this frequency.
 To reduce the cadence later, edit the `cron` expression in
 `.github/workflows/monitor.yml`.
 
-SMS delivery is not necessarily free; check current Twilio pricing.
-
 ## Local checks
 
 No third-party Python packages are required.
@@ -101,7 +81,7 @@ python monitor.py --dry-run
 ```
 
 `--dry-run` prints current overnight openings without sending notifications or
-changing `state.json`. To test notification credentials locally, export the seven
+changing `state.json`. To test notification credentials locally, export the three
 environment variables listed above and run:
 
 ```bash

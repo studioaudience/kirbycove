@@ -4,7 +4,6 @@
 from __future__ import annotations
 
 import argparse
-import base64
 import json
 import os
 import smtplib
@@ -138,7 +137,7 @@ def save_state(path: Path, openings: list[Opening]) -> None:
     path.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
 
 
-def format_messages(openings: list[Opening]) -> tuple[str, str, str]:
+def format_email(openings: list[Opening]) -> tuple[str, str]:
     subject = f"Kirby Cove opening: {len(openings)} new campsite night(s)"
     lines = [
         f"New overnight availability at {FACILITY_NAME}:",
@@ -148,17 +147,7 @@ def format_messages(openings: list[Opening]) -> tuple[str, str, str]:
         f"Book now: {BOOKING_URL}",
         "Availability can disappear quickly and is not held by this alert.",
     ]
-    email_body = "\n".join(lines)
-
-    sms_entries = [f"{opening.night:%b %-d} site {opening.site}" for opening in openings]
-    sms_body = "Kirby Cove OPEN: " + "; ".join(sms_entries) + f". Book: {BOOKING_URL}"
-    if len(sms_body) > 1500:
-        shown = "; ".join(sms_entries[:25])
-        sms_body = (
-            f"Kirby Cove OPEN ({len(openings)} nights): {shown}; and more. "
-            f"Book: {BOOKING_URL}"
-        )
-    return subject, email_body, sms_body
+    return subject, "\n".join(lines)
 
 
 def require_env(names: list[str]) -> dict[str, str]:
@@ -182,61 +171,6 @@ def send_email(subject: str, body: str) -> None:
         smtp.send_message(message)
 
 
-def send_sms(body: str) -> None:
-    env = require_env(
-        [
-            "TWILIO_ACCOUNT_SID",
-            "TWILIO_AUTH_TOKEN",
-            "TWILIO_FROM_NUMBER",
-            "ALERT_PHONE_TO",
-        ]
-    )
-    sid = env["TWILIO_ACCOUNT_SID"]
-    token = env["TWILIO_AUTH_TOKEN"]
-    form = urllib.parse.urlencode(
-        {
-            "From": env["TWILIO_FROM_NUMBER"],
-            "To": env["ALERT_PHONE_TO"],
-            "Body": body,
-        }
-    ).encode("utf-8")
-    authorization = base64.b64encode(f"{sid}:{token}".encode()).decode()
-    request = urllib.request.Request(
-        f"https://api.twilio.com/2010-04-01/Accounts/{sid}/Messages.json",
-        data=form,
-        headers={
-            "Authorization": f"Basic {authorization}",
-            "Content-Type": "application/x-www-form-urlencoded",
-        },
-        method="POST",
-    )
-    try:
-        with urllib.request.urlopen(request, timeout=30) as response:
-            if response.status not in (200, 201):
-                raise RuntimeError(f"Twilio returned HTTP {response.status}")
-    except urllib.error.HTTPError as error:
-        details = error.read().decode("utf-8", errors="replace")[:500]
-        raise RuntimeError(f"Twilio rejected the SMS (HTTP {error.code}): {details}") from error
-    except urllib.error.URLError as error:
-        raise RuntimeError(f"Could not contact Twilio: {error}") from error
-
-
-def notify(subject: str, email_body: str, sms_body: str) -> None:
-    errors: list[str] = []
-    try:
-        send_email(subject, email_body)
-        print("Email alert sent.")
-    except Exception as error:  # Report both channel failures in one run.
-        errors.append(f"email: {error}")
-    try:
-        send_sms(sms_body)
-        print("SMS alert sent.")
-    except Exception as error:
-        errors.append(f"SMS: {error}")
-    if errors:
-        raise RuntimeError("Notification failure(s): " + " | ".join(errors))
-
-
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--state", type=Path, default=DEFAULT_STATE_PATH)
@@ -248,7 +182,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--test-notifications",
         action="store_true",
-        help="send a sample email and SMS without checking availability",
+        help="send a sample email without checking availability",
     )
     return parser.parse_args()
 
@@ -257,7 +191,8 @@ def main() -> int:
     args = parse_args()
     if args.test_notifications:
         sample = [Opening(date.today() + timedelta(days=7), "TEST", "test")]
-        notify(*format_messages(sample))
+        send_email(*format_email(sample))
+        print("Test email sent.")
         return 0
 
     local_timezone = ZoneInfo(os.environ.get("TIMEZONE", "America/Los_Angeles"))
@@ -275,7 +210,8 @@ def main() -> int:
     # Save only after notifications succeed; failed alerts will be retried next run.
     if new_openings:
         print(f"Found {len(new_openings)} newly available site-night(s).")
-        notify(*format_messages(new_openings))
+        send_email(*format_email(new_openings))
+        print("Email alert sent.")
     else:
         print("No new openings; no alert sent.")
     current_keys = {opening.key for opening in openings}
